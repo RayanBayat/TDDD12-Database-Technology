@@ -1,0 +1,1 @@
+We tought the questions were selfexplanetory. We tought that an emplyee has to be either an Actor or a Director, thats why we have a disjoined circle. We tought of episode as an weak entitiy type as it has to be a part of a serie. In task two some of relation types disappears beacause they are not needed but they are included indirectly.
