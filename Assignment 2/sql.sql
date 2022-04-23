@@ -1,3 +1,5 @@
+/* Mohamad Shafeah, mohsh543 and Rayan Bayat, rayba120*/
+
 -- SELECT 
 --     name
 -- FROM
