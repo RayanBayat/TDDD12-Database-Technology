@@ -1,5 +1,3 @@
-/* Mohamad Shafeah, mohsh543 and Rayan Bayat, rayba120*/
-
 -- SELECT 
 --     name
 -- FROM
@@ -37,12 +35,11 @@ Schwarz, Jason B.
 
 # Task 1
 
--- SELECT
--- 	name
+-- SELECT 
+--     name
 -- FROM
--- 	jbdept
--- ORDER BY 
--- 	name;
+--     jbdept
+-- ORDER BY name ASC;
     
 # Output
 /*
@@ -180,12 +177,14 @@ Squeeze Ball
 
 # Task 7
 
--- SELECT
--- 	name
+-- SELECT 
+--     jbitem.name
 -- FROM
--- 	jbitem
+--     jbitem,
+--     jbsupplier
 -- WHERE
--- 	supplier = 89;
+--     jbitem.supplier = jbsupplier.id
+--         AND jbsupplier.name = 'Fisher-Price';
 
 # Output
 /*
