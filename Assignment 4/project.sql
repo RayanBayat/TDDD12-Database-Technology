@@ -29,6 +29,8 @@ DROP PROCEDURE IF EXISTS addFlight;
 DROP FUNCTION IF EXISTS calculateFreeSeats;
 DROP FUNCTION IF EXISTS calculatePrice;
 
+DROP TRIGGER IF EXISTS ticket_num_generator;
+
 DROP PROCEDURE IF EXISTS addReservation;
 DROP PROCEDURE IF EXISTS addPassenger;
 DROP PROCEDURE IF EXISTS addContact;
@@ -407,6 +409,17 @@ BEGIN
 END &&
 DELIMITER ;
 
+# ------------------------------ Triggers ----------------------------------
+SELECT ' Implementing Triggers ' AS 'Message';
+DELIMITER &&
+CREATE TRIGGER ticket_num_generator
+AFTER INSERT
+ON books
+FOR EACH ROW
+BEGIN
+    UPDATE books SET Ticket_num =  FLOOR ( RAND() * ( 100 + 1 ) ) WHERE Book_num = reservation_nr;
+END &&
+DELIMITER ;
 
 # ------------------------------ Procedures ----------------------------------
 SELECT ' Implementing Procedures Part 2 ' AS 'Message';
@@ -551,7 +564,7 @@ BEGIN
 			INSERT INTO payment VALUES (credit_card_number, cardholder_name);
         END IF;
 		INSERT INTO booking VALUES (reservation_nr, price, credit_card_number);
-		UPDATE books SET Ticket_num =  FLOOR ( RAND() * ( 100 + 1 ) ) WHERE Book_num = reservation_nr;
+		#UPDATE books SET Ticket_num =  FLOOR ( RAND() * ( 100 + 1 ) ) WHERE Book_num = reservation_nr;
     END IF;
 END &&
 DELIMITER ;
@@ -613,7 +626,7 @@ CREATE VIEW allFlights AS
 # and therefore the second booking passes the if-statement as well, now both if them can add 21 passengers when the flight only has 40 seats to begin with. 
 
 # 10c
-# If we add SELECT sleep(5); before adding passengers (line 548) then the second booking will have enough time to pass the if-statement, 
+# If we add SELECT sleep(5); before adding passengers (line 561) then the second booking will have enough time to pass the if-statement, 
 # therefore overbooking will occur (second booking will have -2 as nr_of_free_seats). 
 
 # 10d 
