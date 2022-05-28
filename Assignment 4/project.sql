@@ -170,12 +170,9 @@ CREATE TABLE booking (
 
 # --------------------------- Table Books ------------------------
 CREATE TABLE books (
-    Pass_num INT NOT NULL,
-    Book_num INT NOT NULL,
-    Ticket_num INT NOT NULL,
-    CONSTRAINT PK_Books PRIMARY KEY (Pass_num , Book_num),
-    CONSTRAINT FK_Books_Passenger FOREIGN KEY (Pass_Num)
-        REFERENCES passenger (Passport_number),
+    Book_num INT,
+    Ticket_num INT DEFAULT 0,
+    CONSTRAINT PK_Books PRIMARY KEY (Book_num, Ticket_num),
     CONSTRAINT FK_Books_Booking FOREIGN KEY (Book_num)
         REFERENCES booking (Booking_num)
 );
@@ -230,16 +227,13 @@ DECLARE DayID INT;
 DECLARE SchID INT;
 DECLARE Route_Flight VARCHAR(3);
 # ----------------------------------------------
-SELECT 'First Select begin ' AS 'Message';
 SELECT 
     ID
 INTO DayID FROM
     weekday
 WHERE
     weekday.Year = year AND weekday.Day = day;
-    SELECT 'First Select end ' AS 'Message';
 # ----------------------------------------------
-SELECT 'Second Select begin ' AS 'Message';
 SELECT 
     RouteID
 INTO Route_Flight FROM
@@ -248,13 +242,9 @@ WHERE
     route.ARR_Airport_code = arrival_airport_code
         AND route.DEP_Airport_code = departure_airport_code
         AND route.Year = year;
-SELECT 'Second Select end ' AS 'Message';
 # ----------------------------------------------
-SELECT 'Insert into weekly_schedule begin ' AS 'Message';
 INSERT INTO weekly_schedule (Departure_Time, WeekdayID, RouteID, Year) VALUES (departure_time, DayID, Route_Flight, year);
-SELECT 'Insert into weekly_schedule end ' AS 'Message';
 # ----------------------------------------------
-SELECT 'Third Select begin ' AS 'Message';
 SELECT 
     ScheduleID
 INTO SchID FROM
@@ -262,17 +252,14 @@ INTO SchID FROM
 WHERE
     weekly_schedule.WeekdayID = DayID
         AND weekly_schedule.Departure_Time = departure_time;
-SELECT 'Third Select end ' AS 'Message';
 # ----------------------------------------------
 
-SELECT 'Insert into flight begin ' AS 'Message';
 REPEAT 
 	INSERT INTO flight (Week, ScheduleID) 
 		VALUES (week, SchID); 
 	SET week = week + 1;
 	UNTIL week = 53
 END REPEAT;
-SELECT 'Insert into flight end ' AS 'Message';
 # ----------------------------------------------
 END &&  
 DELIMITER ;
@@ -292,31 +279,26 @@ BEGIN
 
 	DECLARE free INT;
     DECLARE booked INT;
-    
     IF (SELECT 
 			COUNT(*)
 		FROM
 			reservation
 		WHERE
-			reservation.Flight_num = flightnumber
-		) = 0
-	THEN SET free = 40;
+			reservation.Flight_num = flightnumber) = 0
+	THEN SET free = 40; SET booked = 0;
     ELSE 
 		SELECT 
-			SUM(Reserved_seats)
-		INTO booked FROM
-			reservation
-		WHERE
-			Reservation_number IN 
-            (
-            SELECT 
-				Booking_num
-			FROM
-				booking
-			)
-        AND reservation.Flight_num = flightnumber;
-	SET free = 40 - booked;
+    SUM(reservation.Reserved_seats)
+INTO booked FROM
+    reservation, flight
+WHERE
+    reservation.Reservation_number IN (SELECT 
+            booking.Booking_num
+        FROM
+            booking)
+        AND flight.Flightnumber = flightnumber;
     END IF;
+    SET free = 40 - booked;
     RETURN free;
 END &&
 DELIMITER ;
@@ -331,7 +313,8 @@ BEGIN
     DECLARE weekday_factor DOUBLE;
 	DECLARE profit_factor DOUBLE;
     DECLARE total_price DOUBLE;
-
+	
+    DECLARE which_year INT;
 
     SET free_seats = calculateFreeSeats(flightnumber);
     SET booked_seats = 40 - free_seats;
@@ -404,7 +387,35 @@ BEGIN
 					)
 			);
 #-----------------------------------------------------------
-	SET total_price = (route_price * weekday_factor * ( ( booked_seats + 1 ) / 40 ) * profit_factor);
+SELECT 
+		year.Year
+	INTO which_year FROM
+		year
+	WHERE
+		year.Year IN 
+			(SELECT 
+				weekday.Year
+			FROM
+				weekday
+			WHERE
+				weekday.ID IN 
+					(SELECT 
+						weekly_schedule.WeekdayID
+					FROM
+						weekly_schedule
+					WHERE
+						weekly_schedule.ScheduleID IN 
+							(SELECT 
+								flight.ScheduleID
+							FROM
+								flight
+							WHERE
+								flight.Flightnumber = flightnumber)
+					)
+			);
+#-----------------------------------------------------------
+
+	SET total_price = ROUND((route_price * weekday_factor * ( (CAST(booked_seats AS DOUBLE) + 1.00 ) / 40.00 ) * profit_factor), 3);
     RETURN total_price;
 END &&
 DELIMITER ;
@@ -414,13 +425,13 @@ SELECT ' Implementing Triggers ' AS 'Message';
 DELIMITER &&
 CREATE TRIGGER ticket_num_generator
 AFTER INSERT
-ON books
+ON booking
 FOR EACH ROW
 BEGIN
-    UPDATE books SET Ticket_num =  FLOOR ( RAND() * ( 100 + 1 ) ) WHERE Book_num = reservation_nr;
+	INSERT INTO books (Book_num) VALUES (@reserv);
+    UPDATE books SET Ticket_num =  FLOOR ( RAND() * ( 100 + 1 ) ) WHERE Book_num = @reserv;
 END &&
 DELIMITER ;
-
 # ------------------------------ Procedures ----------------------------------
 SELECT ' Implementing Procedures Part 2 ' AS 'Message';
 
@@ -474,11 +485,12 @@ BEGIN
 				weekly_schedule.Departure_Time = time)
         AND flight.Week = week;
 # --------------------------------------------------
-	IF flight_number = NULL
+	
+	IF flight_number IS NULL
     THEN 
     SELECT ' There exist no flight for the given route, date and time ' AS 'Message';
     
-    ELSEIF calculateFreeSeats(flight_number) < number_of_passengers 
+    ELSEIF number_of_passengers > 40
 	THEN 
     SELECT ' There are not enough seats available on the chosen flight ' AS 'Message';
     
@@ -495,7 +507,7 @@ DELIMITER ;
 DELIMITER &&
 CREATE PROCEDURE addPassenger(IN reservation_nr INT, IN passport_number INT, IN name VARCHAR(30))
 BEGIN
-	IF EXISTS (SELECT * FROM books WHERE Book_num = reservation_nr)
+	IF EXISTS (SELECT Ticket_num FROM books WHERE Book_num = reservation_nr)
     THEN 
     SELECT 'The booking has already been payed and no futher passengers can be added' AS 'Message';
     
@@ -507,6 +519,9 @@ BEGIN
     THEN
 		INSERT INTO passenger VALUES (passport_number, name);
         INSERT INTO reservs VALUES (passport_number, reservation_nr);
+	ELSEIF NOT EXISTS (SELECT * FROM reservs WHERE Pass_num = passport_number AND Reserv_num = reservation_nr)
+    THEN
+		INSERT INTO reservs VALUES (passport_number, reservation_nr);
 	END IF;
     
 END &&
@@ -517,11 +532,21 @@ DELIMITER ;
 DELIMITER &&
 CREATE PROCEDURE addContact(IN reservation_nr INT, IN passport_number INT, IN email VARCHAR(30), IN phone BIGINT)
 BEGIN
-	IF NOT EXISTS (SELECT * FROM reservs WHERE Reserv_num = reservation_nr AND Pass_num = passport_number)
+	IF NOT EXISTS (SELECT * FROM reservation WHERE Reservation_number = reservation_nr)
+	THEN
+    SELECT 'The given reservation number does not exist' AS 'Message';
+	ELSEIF NOT EXISTS (SELECT * FROM reservs WHERE Reserv_num = reservation_nr AND Pass_num = passport_number)
     THEN 
     SELECT 'The person is not a passenger of the reservation' AS 'Message';
-    ELSE 
+    ELSEIF NOT EXISTS (SELECT * FROM contact WHERE Pass_num = passport_number) 
+    THEN
     INSERT INTO contact VALUES (passport_number, phone, email);
+    UPDATE reservation 
+	SET 
+		Contact_Pass_num = passport_number
+	WHERE
+		reservation.Reservation_number = reservation_nr;
+    ELSE
     UPDATE reservation 
 	SET 
 		Contact_Pass_num = passport_number
@@ -541,29 +566,40 @@ BEGIN
 	DECLARE flight INT;
     DECLARE passengers INT;
     DECLARE price DOUBLE;
+    DECLARE passport INT;
+    
+    
     
     SELECT reservation.Flight_num INTO flight FROM reservation WHERE Reservation_number = reservation_nr; 
-    SELECT Reserved_seats INTO passengers FROM reservation WHERE Reservation_number = reservation_nr;
+    select @flight := flight;
+    
+    SELECT COUNT(*) INTO passengers FROM reservs WHERE Reserv_num = reservation_nr;
     SET price = calculatePrice(flight);
+    
+    #SELECT Pass_num  FROM reservs JOIN books ON Reserv_num = reservation_nr AND Book_num = Reserv_num;
+    
+	SELECT @reserv := reservation_nr;
     
     IF NOT EXISTS (SELECT * FROM reservation WHERE Reservation_number = reservation_nr)
     THEN
     SELECT 'The given reservation number does not exist' AS 'Message';
     
-    ELSEIF (SELECT Contact_Pass_num FROM reservation WHERE Reservation_number = reservation_nr) = NULL
+    ELSEIF (SELECT Contact_Pass_num FROM reservation WHERE Reservation_number = reservation_nr) IS NULL
     THEN 
     SELECT 'The reservation has no contact yet' AS 'Message';
     
-    ELSEIF calculateFreeSeats(flight) < passengers 
+    ELSEIF passengers > 40 OR (calculateFreeSeats(flight) < passengers) 
 	THEN 
     SELECT 'There are not enough seats available on the flight anymore, deleting reservation' AS 'Message';
     
-    ELSE #SELECT SLEEP (5);
+    ELSE SELECT SLEEP (5);
 		IF NOT EXISTS (SELECT * FROM payment WHERE Creditcard_number = credit_card_number)
         THEN
 			INSERT INTO payment VALUES (credit_card_number, cardholder_name);
         END IF;
 		INSERT INTO booking VALUES (reservation_nr, price, credit_card_number);
+        #INSERT INTO books (Book_num) VALUES (reservation_nr);
+        #INSERT INTO books (Book_num) VALUES (reservation_nr);
 		#UPDATE books SET Ticket_num =  FLOOR ( RAND() * ( 100 + 1 ) ) WHERE Book_num = reservation_nr;
     END IF;
 END &&
@@ -573,8 +609,8 @@ DELIMITER ;
 # ------------------------------ Views ----------------------------------
 CREATE VIEW allFlights AS
     SELECT 
-        Flight_From.Country AS departure_city_name,
-        Flight_To.Country AS destination_city_name,
+        Flight_From.Airport_name AS departure_city_name,
+        Flight_To.Airport_name AS destination_city_name,
         weekly_schedule.Departure_Time AS departure_time,
         weekday.Day AS departure_day,
         flight.Week AS departure_week,
@@ -626,12 +662,18 @@ CREATE VIEW allFlights AS
 # and therefore the second booking passes the if-statement as well, now both if them can add 21 passengers when the flight only has 40 seats to begin with. 
 
 # 10c
-# If we add SELECT sleep(5); before adding passengers (line 561) then the second booking will have enough time to pass the if-statement, 
+# If we add SELECT sleep(5); before adding passengers (line 595) then the second booking will have enough time to pass the if-statement, 
 # therefore overbooking will occur (second booking will have -2 as nr_of_free_seats). 
 
 # 10d 
-# Just added START TRANSACTION; at the beginning of the test-scripts and COMMIT; 
-# at the end and it was enough to stop overbooking even when solution in 10c is implemented. 
+# Just added START TRANSACTION; before the addPayment and COMMIT at the end; 
+# and it was enough to stop overbooking even when solution in 10c is implemented. 
+# ----------------------
+#start transaction;
+#CALL addPayment (@a, "Sauron",7878787878);
+#SELECT "Nr of free seats on the flight (should be 19 if no overbooking occured, otherwise -2): " as "Message", (SELECT nr_of_free_seats from allFlights where departure_week = 1) as "nr_of_free_seats";
+#commit;
+# ----------------------
 
 # ----------------------------- Changes to EER-diagram and Relational database ------------------------------------------------------
 # Many names were changed because we thought they have to be the same as "Variable" column in question 2
